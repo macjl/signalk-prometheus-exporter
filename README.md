@@ -25,12 +25,17 @@ which will contain the current values eg
 
     sudo su - root
     cd /opt
-    wget https://github.com/prometheus/node_exporter/releases/download/v0.16.0/node_exporter-0.16.0.linux-armv7.tar.gz
-    ln -s node_exporter-0.16.0.linux-armv7 node_exporter
-    wget https://github.com/prometheus/prometheus/releases/download/v2.2.1/prometheus-2.2.1.linux-armv7.tar.gz
+    wget https://github.com/prometheus/node_exporter/releases/download/v0.18.1/node_exporter-0.18.1.linux-armv7.tar.gz
+    tar xvzf node_exporter-0.18.1.linux-armv7.tar.gz
+    rm node_exporter-0.18.1.linux-armv7.tar.gz
+    ln -s node_exporter-0.18.1.linux-armv7 node_exporter
+    wget https://github.com/prometheus/prometheus/releases/download/v2.15.1/prometheus-2.15.1.linux-armv7.tar.gz
+    tar xvzf prometheus-2.15.1.linux-armv7.tar.gz
+    rm prometheus-2.15.1.linux-armv7.tar.gz
     ln -s prometheus-2.2.1.linux-armv7 prometheus
+    mkdir prometheus/data
     useradd prometheus
-    chmod -R prometheus:prometheus prometheus node_exporter
+    chown -R prometheus:prometheus prometheus node_exporter
 
     cat << EOF > /opt/prometheus/prometheus.service
     # /etc/systemd/system/prometheus.service
