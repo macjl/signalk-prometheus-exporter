@@ -28,7 +28,7 @@ module.exports = function (app) {
   }
 
   function toPromKey(v) {
-    return v.replace(/\./g,"_");
+    return v.replace(/-|\./g,"_");
   }
 
   function toMetrics(store) {
