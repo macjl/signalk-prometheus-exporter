@@ -37,6 +37,12 @@ which will contain the current values eg
     useradd prometheus
     chown -R prometheus:prometheus prometheus node_exporter
 
+    cat << EOF >> /etc/security/limits.conf
+    prometheus     soft    nofile   65536
+    prometheus     hard    nofile   65536
+    EOF
+
+
     cat << EOF > /opt/prometheus/prometheus.service
     # /etc/systemd/system/prometheus.service
     [Unit]
@@ -46,6 +52,7 @@ which will contain the current values eg
 
     [Service]
     User=prometheus
+    LimitNOFILE=65536
     Restart=on-failure
     ExecStart=/opt/prometheus/prometheus \
               --config.file=/opt/prometheus/prometheus.yml \
@@ -135,4 +142,8 @@ which will contain the current values eg
 
 
 
+
+
+
+I know this is closed but was reading around (looking at ESP32) and spotted others having problems with 3.3v transceivers on Raymarine. I had the same problem (several years ago). I put a scope on the CanH and CanL and found that most of my Raymarine tracievers were 5v transceivers. with CanH always going above 3.3v. The CanH sent from the CJMCU-230/SN65HVD230 (as used in the dual can transceiver used for Teensy mentioned elsewhere) never goes about supply, ie 3.3v. As mentioned in the SN65HVD230 [datasheet](http://www.ti.com/lit/ds/symlink/sn65hvd230.pdf) section 11.3.1.3 the  SN65HVD230 is compatible with 5V trancevers. However there is a reduced margin of error. If the 5V transceiver is expecting 5V CanH then it may miss a CanH from a 3.3v transceiver.  It more likely to be the fault of the 5V transceiver. Perhaps Raymarine use 5V trancevers to avoid the problem. If the 3.3v is 3.2v it might happen more often. Recieve was no problem since the 3.3v transceivers look for common mode voltages. When I switched to a MCP2562 wired as shown in [figure 1-2 page 6](http://ww1.microchip.com/downloads/en/devicedoc/20005167c.pdf) with 5V driving the transceiver and 3.3V driving the logic all the problems went away. Almost no CAN errors seen for 2 years with this library on a 3.3v Due.  Hope that helps someone (and reminds me).... assuming the above is correct.
 
