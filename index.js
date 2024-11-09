@@ -18,7 +18,7 @@ const debug = require('debug')('signalk-prometheus-exporter')
 const util = require('util')
 
 module.exports = function (app) {
-  const logError = app.error || ((err) => {console.error(err)})
+  const logError = app.error || ((err) => {console.error(err)})
   let selfContext = 'vessels.' + app.selfId
   let store = {};
 
@@ -37,19 +37,22 @@ module.exports = function (app) {
         var k = toPromKey(v);
         r = r + "# HELP "+k+" "+v+"\n";
         r = r + "# TYPE "+k+" gauge\n";
-        r = r + k + " " + store[v] + "\n";
+        r = r + k + "{context=\"" + store[v].context + "\",source=\"" + store[v].source + "\"} " + store[v].value + " " + store[v].timestamp + "\n";
       } 
       return r;
   }
-  function checkAndStore(key, value, store) {
+  function checkAndStore(key, value, context, source, timestamp, store) {
     if (typeof value === 'number' && !isNaN(value)) {
-      store[key] = value;
+      store[key] = { value: value, context: context, source: source, timestamp: timestamp };
     }
   }
   function saveDelta(delta, checkShouldStore, store) {
       if (delta.context === 'vessels.self') {
         delta.context = selfContext
       }
+      var context = delta.context;
+      var timestamp = new Date(delta.updates[0].timestamp).getTime();
+      var source = delta.updates[0].$source;
       if (delta.updates && delta.context === selfContext) {
         delta.updates.forEach(update => {
           if (update.values) {
@@ -58,17 +61,17 @@ module.exports = function (app) {
               var value = update.values[i].value;
               if (shouldStore(path)) {
                 if (path === 'navigation.position') {
-                  checkAndStore(path+'.longitude', value.longitude, store);
-                  checkAndStore(path+'.latitude', value.latitude, store);
+                  checkAndStore(path+'.longitude', value.longitude, context, source, timestamp, store);
+                  checkAndStore(path+'.latitude', value.latitude, context, source, timestamp, store);
                 } else if (path === 'navigation.attitude') {
-                  checkAndStore(path+'.pitch', value.pitch, store);
-                  checkAndStore(path+'.roll', value.roll, store);
-                  checkAndStore(path+'.yaw', value.roll, store);
+                  checkAndStore(path+'.pitch', value.pitch, context, source, timestamp, store);
+                  checkAndStore(path+'.roll', value.roll, context, source, timestamp, store);
+                  checkAndStore(path+'.yaw', value.yaw, context, source, timestamp, store);
                 } else if (path === 'environment.current') {
-                  checkAndStore(path+'.setTrue', value.setTrue, store);
-                  checkAndStore(path+'.drift', value.drift, store);
+                  checkAndStore(path+'.setTrue', value.setTrue, context, source, timestamp, store);
+                  checkAndStore(path+'.drift', value.drift, context, source, timestamp, store);
                 } else {
-                  checkAndStore(path, value, store);
+                  checkAndStore(path, value, context, source, timestamp, store);
                 }
               }
             }
