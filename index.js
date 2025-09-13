@@ -21,6 +21,7 @@ module.exports = function (app) {
   const logError = app.error || ((err) => {console.error(err)})
   let selfContext = 'vessels.' + app.selfId
   let store = {};
+  let maxAgeMs = 600000;
 
   let unsubscribes = []
   let shouldStore = function (path) {
@@ -32,12 +33,17 @@ module.exports = function (app) {
   }
 
   function toMetrics(store) {
-      var r = ""
+      var r = "";
+      const now = Date.now();
       for (var v in store) {
-        var k = toPromKey(store[v].path);
-        r = r + "# HELP "+k+" "+k+"\n";
-        r = r + "# TYPE "+k+" gauge\n";
-        r = r + k + "{context=\"" + store[v].context + "\",source=\"" + store[v].source + "\"} " + store[v].value + " " + store[v].timestamp + "\n";
+	if (now - store[v].timestamp > maxAgeMs ) {
+          delete store[v];
+       } else {
+          var k = toPromKey(store[v].path);
+          r = r + "# HELP "+k+" "+k+"\n";
+          r = r + "# TYPE "+k+" gauge\n";
+          r = r + k + "{context=\"" + store[v].context + "\",source=\"" + store[v].source + "\"} " + store[v].value + " " + store[v].timestamp + "\n";
+        }
       } 
       return r;
   }
@@ -115,6 +121,12 @@ module.exports = function (app) {
             'With the Self option, only data from the local boat is exposed in Prometheus format. With the All option, data from all boats is exposed, with the boat identifier included in the context label.',
           default: 'Self',
           enum: ['Self', 'All']
+        },
+	maxAge: {
+          type: 'number',
+          title: 'Maximum data age (s)',
+          description: 'Metrics older than this age (in seconds) are not exported. Default: 600 (10 minutes).',
+          default: 600
         }
       }
     },
@@ -144,6 +156,9 @@ module.exports = function (app) {
         allShip = 1;
       } else {
 	allShip = 0;
+      }
+      if (options.maxAge) {
+        maxAgeMs = options.maxAge * 1000;
       }
       var handleDelta = function(delta) {
         saveDelta(delta, shouldStore, store, allShip);
