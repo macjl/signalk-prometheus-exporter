@@ -33,26 +33,70 @@ module.exports = function (app) {
   }
 
   function toMetrics(store) {
-      var r = "";
-      const now = Date.now();
-      for (var v in store) {
-	if (now - store[v].timestamp > maxAgeMs ) {
-          delete store[v];
-       } else {
-          var k = toPromKey(store[v].path);
-          r = r + "# HELP "+k+" "+k+"\n";
-          r = r + "# TYPE "+k+" gauge\n";
-          r = r + k + "{context=\"" + store[v].context + "\",source=\"" + store[v].source + "\"} " + store[v].value + " " + store[v].timestamp + "\n";
-        }
-      } 
-      return r;
+    let r = "";
+    const now = Date.now();
+    for (const key in store) {
+      const entry = store[key];
+      if (now - entry.timestamp > maxAgeMs) {
+        delete store[key];
+        continue;
+      }
+      const k = toPromKey(entry.path);
+      r += `# HELP ${k} ${k}\n`;
+      r += `# TYPE ${k} gauge\n`;
+
+      let labels = `context="${entry.context}",source="${entry.source}"`;
+      if (entry.strValue) {
+        labels += `,value_str="${entry.strValue}"`;
+      }
+
+      r += `${k}{${labels}} ${entry.value} ${entry.timestamp}\n`;
+    }
+    return r;
   }
-  function checkAndStore(path, value, context, source, timestamp, store) {
-    if (typeof value === 'number' && !isNaN(value)) {
-      store[path+context+source] = { path: path, value: value, context: context, source: source, timestamp: timestamp };
+  function checkAndStore(path, entry, context, source, timestamp, store) {
+    if (entry.type === 'number') {
+      store[path + context + source] = {
+        path,
+        value: entry.value,
+        context,
+        source,
+        timestamp
+      };
+    } else if (entry.type === 'string') {
+      store[path + context + source + '_str_' + entry.value] = {
+        path,
+        value: 1,
+        context,
+        source,
+        timestamp,
+        strValue: entry.value
+      };
     }
   }
+  function flattenJson(pathPrefix, obj, result) {
+    result = result || {};
+    if (typeof obj === 'number') {
+      result[pathPrefix] = { type: 'number', value: obj };
+    } else if (typeof obj === 'boolean') {
+      result[pathPrefix] = { type: 'number', value: obj ? 1 : 0 };
+    } else if (typeof obj === 'string') {
+      const d = new Date(obj).getTime();
+      if (isNaN(d)) {
+        result[pathPrefix] = { type: 'string', value: obj };
+      } else {
+        result[pathPrefix] = { type: 'number', value: d };
+      }
+    } else if (typeof obj === 'object' && obj !== null) {
+      for (const key in obj) {
+        const newPrefix = pathPrefix ? pathPrefix + '.' + key : key;
+        flattenJson(newPrefix, obj[key], result);
+      }
+    }
+    return result;
+  }
   function saveDelta(delta, checkShouldStore, store, allShip) {
+      if (!delta.updates || delta.updates.length === 0) return;
       if (delta.context === 'vessels.self') {
         delta.context = selfContext
       }
@@ -62,25 +106,14 @@ module.exports = function (app) {
       if (delta.updates && (delta.context === selfContext || allShip)) {
         delta.updates.forEach(update => {
           if (update.values) {
-            for (var i = update.values.length - 1; i >= 0; i--) {
-              var path = update.values[i].path;
-              var value = update.values[i].value;
-              if (shouldStore(path)) {
-                if (path === 'navigation.position') {
-                  checkAndStore(path+'.longitude', value.longitude, context, source, timestamp, store);
-                  checkAndStore(path+'.latitude', value.latitude, context, source, timestamp, store);
-                } else if (path === 'navigation.attitude') {
-                  checkAndStore(path+'.pitch', value.pitch, context, source, timestamp, store);
-                  checkAndStore(path+'.roll', value.roll, context, source, timestamp, store);
-                  checkAndStore(path+'.yaw', value.yaw, context, source, timestamp, store);
-                } else if (path === 'environment.current') {
-                  checkAndStore(path+'.setTrue', value.setTrue, context, source, timestamp, store);
-                  checkAndStore(path+'.drift', value.drift, context, source, timestamp, store);
-                } else {
-                  checkAndStore(path, value, context, source, timestamp, store);
+            update.values.forEach(updateValue => {
+              const flat = flattenJson(updateValue.path, updateValue.value);
+              for (const path in flat) {
+                if (shouldStore(path)) {
+                  checkAndStore(path, flat[path], context, source, timestamp, store);
                 }
               }
-            }
+            });
           }
         });
       }      
@@ -122,7 +155,7 @@ module.exports = function (app) {
           default: 'Self',
           enum: ['Self', 'All']
         },
-	maxAge: {
+        maxAge: {
           type: 'number',
           title: 'Maximum data age (s)',
           description: 'Metrics older than this age (in seconds) are not exported. Default: 600 (10 minutes).',
@@ -155,7 +188,7 @@ module.exports = function (app) {
       if (options.selfOrAll == "All") {
         allShip = 1;
       } else {
-	allShip = 0;
+        allShip = 0;
       }
       if (options.maxAge) {
         maxAgeMs = options.maxAge * 1000;
