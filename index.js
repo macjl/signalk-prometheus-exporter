@@ -34,26 +34,26 @@ module.exports = function (app) {
   function toMetrics(store) {
       var r = ""
       for (var v in store) {
-        var k = toPromKey(v);
-        r = r + "# HELP "+k+" "+v+"\n";
+        var k = toPromKey(store[v].path);
+        r = r + "# HELP "+k+" "+k+"\n";
         r = r + "# TYPE "+k+" gauge\n";
         r = r + k + "{context=\"" + store[v].context + "\",source=\"" + store[v].source + "\"} " + store[v].value + " " + store[v].timestamp + "\n";
       } 
       return r;
   }
-  function checkAndStore(key, value, context, source, timestamp, store) {
+  function checkAndStore(path, value, context, source, timestamp, store) {
     if (typeof value === 'number' && !isNaN(value)) {
-      store[key] = { value: value, context: context, source: source, timestamp: timestamp };
+      store[path+context+source] = { path: path, value: value, context: context, source: source, timestamp: timestamp };
     }
   }
-  function saveDelta(delta, checkShouldStore, store) {
+  function saveDelta(delta, checkShouldStore, store, allShip) {
       if (delta.context === 'vessels.self') {
         delta.context = selfContext
       }
       var context = delta.context;
       var timestamp = new Date(delta.updates[0].timestamp).getTime();
       var source = delta.updates[0].$source;
-      if (delta.updates && delta.context === selfContext) {
+      if (delta.updates && (delta.context === selfContext || allShip)) {
         delta.updates.forEach(update => {
           if (update.values) {
             for (var i = update.values.length - 1; i >= 0; i--) {
@@ -107,6 +107,14 @@ module.exports = function (app) {
             type: 'string',
             title: 'Path'
           }
+        },
+        selfOrAll: {
+          type: 'string',
+          title: 'Type of List',
+          description:
+            'With the Self option, only data from the local boat is exposed in Prometheus format. With the All option, data from all boats is exposed, with the boat identifier included in the context label.',
+          default: 'Self',
+          enum: ['Self', 'All']
         }
       }
     },
@@ -132,8 +140,13 @@ module.exports = function (app) {
           }
         }
       }
+      if (options.selfOrAll == "All") {
+        allShip = 1;
+      } else {
+	allShip = 0;
+      }
       var handleDelta = function(delta) {
-        saveDelta(delta, shouldStore, store);
+        saveDelta(delta, shouldStore, store, allShip);
       }
       app.signalk.on('delta', handleDelta)
       unsubscribes.push(() => {
